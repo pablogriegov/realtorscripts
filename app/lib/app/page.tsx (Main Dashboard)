@@ -1,0 +1,183 @@
+"use client";
+import { useState, useEffect } from "react";
+
+type Script = { id: string; title: string; body: string; createdAt: number };
+type Project = { id: string; name: string; desc?: string; scripts: Script[]; createdAt: number };
+
+const accent = "#00d4ff", gold = "#e2c97e", purple = "#7c6fff";
+const card = "#111118", border = "#1e1e2e", border2 = "#252535";
+const textPrimary = "#e8e8f0", textMuted = "#555570", textSub = "#8888aa";
+const sectionColors = [accent, purple, gold, "#ff6b9d", "#4caf84", "#ff9f43"];
+const uid = () => Math.random().toString(36).substr(2, 9);
+
+const Pill = ({ children, color = accent }: { children: React.ReactNode; color?: string }) => (
+  <span style={{ background: color + "18", color, border: `1px solid ${color}33`, borderRadius: 99, padding: "2px 10px", fontSize: "0.7rem", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{children}</span>
+);
+
+const Input = ({ style = {}, ...p }: React.InputHTMLAttributes<HTMLInputElement>) => (
+  <input style={{ width: "100%", background: "#0d0d16", border: `1px solid ${border2}`, borderRadius: 9, padding: "0.75rem 1rem", color: textPrimary, fontSize: "0.95rem", ...style }} {...p} />
+);
+
+const Btn = ({ children, variant = "primary", style = {}, ...p }: { variant?: "primary"|"ghost"|"danger"|"outline"; style?: React.CSSProperties } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
+  const styles: Record<string, React.CSSProperties> = {
+    primary: { background: accent, color: "#000", border: "none", fontWeight: 700 },
+    ghost: { background: "transparent", color: textSub, border: `1px solid ${border2}` },
+    danger: { background: "transparent", color: "#ff4466", border: `1px solid #ff446622` },
+    outline: { background: accent + "18", color: accent, border: `1px solid ${accent}33`, fontWeight: 600 },
+  };
+  return <button className="btn" style={{ borderRadius: 8, padding: "0.65rem 1.25rem", fontSize: "0.88rem", cursor: "pointer", ...styles[variant], ...style }} {...p}>{children}</button>;
+};
+
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000bb", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div className="fade-in" style={{ background: card, border: `1px solid ${border2}`, borderRadius: 16, padding: "2rem", width: "100%", maxWidth: 420, boxShadow: "0 24px 80px #000" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+          <h2 style={{ color: textPrimary, fontWeight: 700, fontSize: "1.1rem" }}>{title}</h2>
+          <button className="btn" onClick={onClose} style={{ background: "none", border: "none", color: textMuted, fontSize: "1.2rem" }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [modal, setModal] = useState<string | null>(null);
+  const [pin, setPin] = useState(""), [pinErr, setPinErr] = useState("");
+  const [projName, setProjName] = useState(""), [projDesc, setProjDesc] = useState(""), [editId, setEditId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  useEffect(() => { fetch("/api/projects").then(r => r.json()).then(setProjects); }, []);
+
+  async function persist(updated: Project[]) {
+    setSyncing(true);
+    setProjects(updated);
+    await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) });
+    setSyncing(false);
+  }
+
+  function checkPin() {
+    const adminPin = process.env.NEXT_PUBLIC_ADMIN_PIN || "1234";
+    if (pin === adminPin) { setIsAdmin(true); setModal(null); setPinErr(""); setPin(""); }
+    else setPinErr("Incorrect PIN.");
+  }
+
+  async function saveProject() {
+    if (!projName.trim()) return;
+    let updated: Project[];
+    if (editId) updated = projects.map(p => p.id === editId ? { ...p, name: projName.trim(), desc: projDesc.trim() } : p);
+    else updated = [{ id: uid(), name: projName.trim(), desc: projDesc.trim(), scripts: [], createdAt: Date.now() }, ...projects];
+    await persist(updated);
+    setProjName(""); setProjDesc(""); setEditId(null); setModal(null);
+  }
+
+  async function deleteProject(id: string) { await persist(projects.filter(p => p.id !== id)); }
+
+  function copyLink(id: string) {
+    navigator.clipboard.writeText(`${window.location.origin}/project/${id}`);
+    setCopied(id); setTimeout(() => setCopied(null), 2000);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh" }}>
+      {/* Topbar */}
+      <div style={{ borderBottom: `1px solid ${border}`, padding: "0 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", height: 54, position: "sticky", top: 0, background: "#0a0a0fee", backdropFilter: "blur(14px)", zIndex: 100 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: `linear-gradient(135deg,${accent},#0055ff)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff" }}>S</div>
+          <span style={{ color: textPrimary, fontWeight: 700, fontSize: "0.93rem" }}>RealtorScripts</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {syncing && <span style={{ color: textMuted, fontSize: "0.73rem", fontFamily: "'JetBrains Mono',monospace" }}>syncing…</span>}
+          {isAdmin ? <Pill color={gold}>Admin</Pill> : <Btn variant="ghost" style={{ padding: "5px 14px", fontSize: "0.8rem" }} onClick={() => setModal("pin")}>🔐 Admin</Btn>}
+        </div>
+      </div>
+
+      {/* Projects */}
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1.5rem" }} className="fade-in">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{ color: textPrimary, fontSize: "1.6rem", fontWeight: 800, marginBottom: 4 }}>Projects</h1>
+            <p style={{ color: textMuted, fontSize: "0.86rem" }}>Share a project link directly with your realtor — they only see that project.</p>
+          </div>
+          {isAdmin && <Btn onClick={() => { setProjName(""); setProjDesc(""); setEditId(null); setModal("project"); }}>+ New Project</Btn>}
+        </div>
+
+        {projects.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "5rem 2rem", color: textMuted }}>
+            <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📁</div>
+            <div style={{ color: textSub, marginBottom: 8 }}>No projects yet</div>
+            {isAdmin && <Btn onClick={() => setModal("project")} style={{ marginTop: 8 }}>+ New Project</Btn>}
+            {!isAdmin && <div style={{ fontSize: "0.83rem" }}>Log in as admin to create projects.</div>}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "1rem" }}>
+            {projects.map((p, i) => {
+              const color = sectionColors[i % sectionColors.length];
+              return (
+                <div key={p.id} className="hover-card" style={{ background: card, border: `1px solid ${border}`, borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ height: 3, background: color }} />
+                  <div style={{ padding: "1.4rem 1.5rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: color + "18", border: `1px solid ${color}33`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem" }}>
+                        {["🏠", "🏢", "🏡", "🏘", "🏗", "🏬"][i % 6]}
+                      </div>
+                      {isAdmin && (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn" onClick={() => { setProjName(p.name); setProjDesc(p.desc || ""); setEditId(p.id); setModal("project"); }} style={{ background: "none", border: "none", color: textMuted, fontSize: "0.85rem", padding: "2px 6px" }}>✏</button>
+                          <button className="btn" onClick={() => deleteProject(p.id)} style={{ background: "none", border: "none", color: "#ff4466", fontSize: "0.85rem", padding: "2px 6px" }}>✕</button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ color: textPrimary, fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>{p.name}</div>
+                    {p.desc && <div style={{ color: textMuted, fontSize: "0.82rem", marginBottom: 10, lineHeight: 1.5 }}>{p.desc}</div>}
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 14 }}>
+                      <Pill color={color}>{p.scripts.length} scripts</Pill>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <a href={`/project/${p.id}`} style={{ flex: 1 }}>
+                        <Btn variant="outline" style={{ width: "100%", textAlign: "center" }}>Open →</Btn>
+                      </a>
+                      <Btn variant="ghost" style={{ padding: "0.65rem 1rem" }} onClick={() => copyLink(p.id)}>
+                        {copied === p.id ? "✓ Copied!" : "📋 Copy Link"}
+                      </Btn>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* PIN Modal */}
+      {modal === "pin" && (
+        <Modal title="🔐 Admin Access" onClose={() => { setModal(null); setPin(""); setPinErr(""); }}>
+          <Input type="password" inputMode="numeric" placeholder="Enter PIN" value={pin} onChange={e => setPin(e.target.value)} style={{ marginBottom: "0.75rem" }} onKeyDown={e => e.key === "Enter" && checkPin()} />
+          {pinErr && <p style={{ color: "#ff4466", fontSize: "0.82rem", marginBottom: "0.75rem" }}>{pinErr}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={checkPin} style={{ flex: 1 }}>Unlock</Btn>
+            <Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Project Modal */}
+      {modal === "project" && (
+        <Modal title={editId ? "Edit Project" : "New Project"} onClose={() => setModal(null)}>
+          <div style={{ color: textSub, fontSize: "0.73rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>Project Name</div>
+          <Input value={projName} onChange={e => setProjName(e.target.value)} placeholder="e.g. Downtown Listings" style={{ marginBottom: "1rem" }} onKeyDown={e => e.key === "Enter" && saveProject()} />
+          <div style={{ color: textSub, fontSize: "0.73rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 7 }}>Description (optional)</div>
+          <Input value={projDesc} onChange={e => setProjDesc(e.target.value)} placeholder="e.g. Scripts for John Smith" style={{ marginBottom: "1.25rem" }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={saveProject} style={{ flex: 1 }}>{editId ? "Save Changes" : "Create Project"}</Btn>
+            <Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
