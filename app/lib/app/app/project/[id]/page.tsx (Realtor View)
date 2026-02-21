@@ -1,0 +1,10 @@
+import { getProjects } from "@/lib/storage";
+import { notFound } from "next/navigation";
+import ScriptViewer from "./ScriptViewer";
+
+export default async function ProjectPage({ params }: { params: { id: string } }) {
+  const projects = await getProjects();
+  const project = projects.find(p => p.id === params.id);
+  if (!project) notFound();
+  return <ScriptViewer project={project} />;
+}
